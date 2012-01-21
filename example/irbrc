@@ -1,0 +1,61 @@
+# This is an example irbrc which can be used as follows:
+#
+# Start vanilla irb and run
+#
+#   load 'irbrc'
+#
+# When you copy this file as your ~/.irbrc, you need to adjust
+# - the path to the irb extender
+# pathes to the extender and the plugins
+
+
+########################################
+# The path to the irb extender.
+#
+# This is the "working example path" for example/irbrc
+#
+# require File.expand_path("../init", __FILE__)
+#
+# This is the recommended relative path to an installed extender
+#
+# require File.expand_path("../.irb/extender/init", __FILE__)
+#
+##########################################
+
+#
+require File.expand_path("../init", __FILE__)
+
+::IRB::Extender.configure do |config|
+  # The plugins_example directory
+  # If you are not using plugins or the plugins directory is a sibling
+  # of your extender directory, this need not to be configured
+  # config[:plugins] = File.expand_path("../.irb/plugins", __FILE__)
+  #
+  config[:plugins] = File.expand_path("../plugins", __FILE__)
+
+  # Whether to show backtraces when an error occures
+  # config[:backtrace] = false
+
+  # Color output
+  # config[:color] = true
+
+  # No output
+  # config[:quiet] = false
+end
+
+::IRB::Extender.run(self) do |loader|
+  # direct library loading
+  loader.activate 'rubygems'
+
+  # wrapped libary loading - allows library customization - see wirble.rb
+  loader.plugin 'wirble'
+
+  # example for a library which is not available
+  loader.activate 'unavailable_library'
+
+  # example where the plugin itself raises an error
+  loader.plugin 'fail'
+
+  # example where the library loaded by the plugin raises an error
+  loader.plugin 'failing_plain_code'
+end
