@@ -1,31 +1,40 @@
 # This is an example irbrc which can be used as follows:
 #
-# Start vanilla irb and run
+# Start vanilla irb (irb -f) and run
 #
 #   load 'irbrc'
 #
 # When you copy this file as your ~/.irbrc, you need to adjust
 # - the path to the irb extender
-# pathes to the extender and the plugins
+# - probably the path to the plugins
+#
+# The recommended "least configuration" setup looks like this
+#
+# ~/
+# ~/.irbrc
+# ~/.irb/extender/
+# ~/.irb/extender/init.rb
+# ~/.irb/extender/...
+# ~/.irb/plugins/
+# ~/.irb/plugins/helper           # directory for helpers
+#                                 # every helper is included into a common helper module
+#                                 # and this is available via irb_helper
+# ~/.irb/plugins/lib              #
+# ~/.irb/plugins/lib/fine.rb      # activate 'fine', :local => true will require this file
+#                                 # ruby 1.8: beware of naming a plugin or "local" file like
+#                                 # a file in your current directory (load path contains ".")
+#
+# ~/.irb/plugins/nice_plugin.rb
+# ~/.irb/plugins/weird_plugin.rb
+# ~/.irb/plugins/helpful_plugin.rb
+# ~/.irb/plugins/...
 
+##################################################
 
-########################################
-# The path to the irb extender.
-#
-# This is the "working example path" for example/irbrc
-#
-# require File.expand_path("../init", __FILE__)
-#
-# This is the recommended relative path to an installed extender
-#
-# require File.expand_path("../.irb/extender/init", __FILE__)
-#
-##########################################
+require File.expand_path("../../init", __FILE__)      # the example setup
+# require File.expand_path("../.irb/extender/init", __FILE__)   # __FILE__ == ~/.irbrc
 
-#
-require File.expand_path("../init", __FILE__)
-
-::IRB::Extender.configure do |config|
+::IRB::Extender.run(self) do
   # The plugins_example directory
   # If you are not using plugins or the plugins directory is a sibling
   # of your extender directory, this need not to be configured
@@ -41,21 +50,20 @@ require File.expand_path("../init", __FILE__)
 
   # No output
   # config[:quiet] = false
-end
 
-::IRB::Extender.run(self) do |loader|
-  # direct library loading
-  loader.activate 'rubygems'
+  # simple library loading
+  activate 'rubygems'
 
-  # wrapped libary loading - allows library customization - see wirble.rb
-  loader.plugin 'wirble'
+  # advanced libary loading - allows library customization - see wirble.rb
+  # Example plugin config (used in plugins/wirble.rb - see there)
+  plugin 'wirble', :config => {:color => true}
 
   # example for a library which is not available
-  loader.activate 'unavailable_library'
+  activate 'unavailable_library'
 
   # example where the plugin itself raises an error
-  loader.plugin 'fail'
+  plugin 'fail'
 
   # example where the library loaded by the plugin raises an error
-  loader.plugin 'failing_plain_code'
+  plugin 'failing_plain_code'
 end

@@ -36,11 +36,7 @@ module IRB
         state = :red
         begin
           if required
-            # if options[:local]
-            #   @context.instance_eval File.read(required), required
-            # else
-              @context.instance_eval {require required}
-            # end
+            @context.instance_eval {require required}
           end
           yield if block_given?
           state = :green
@@ -49,7 +45,7 @@ module IRB
           state = e
         rescue LoadError => e
           warn "Activating #{description} failed", :error => e
-          state = :grey
+          state = :gray
         end
       end
       activation << [description, state]
@@ -62,7 +58,7 @@ module IRB
     def self.print_summary
       return if activation.empty?
       inline_notify(:block => true) do
-        notify "Console extensions: "
+        notify "Console extensions:"
         activation.each do |(name, state)|
           text = " #{name}"
           case state
@@ -75,23 +71,61 @@ module IRB
       end
     end
 
-    def self.plugin(plugin, options = {})
+    def self.plugin_config_stack
+      @plugin_config_stack ||= []
+    end
+
+    def self.plugin_config
+      plugin_config_stack.last
+    end
+
+    def self.with_plugin_config(plugin_config)
+      plugin_config_stack << plugin_config
+      yield
+      plugin_config_stack.pop
+    end
+
+    def self.plugin(plugin, options = {}, &block)
+      plugin_config = config[:extensions][plugin.to_sym]
+      unless plugin_config
+        plugin_config = {}
+        config[:extensions][plugin.to_sym] = plugin_config
+      end
+      plugin_config[:active] = nil
       return if options.key?(:only_if) && !options[:only_if]
       return if options[:not_if]
-      file = plugin_file(plugin)
-      begin
-        @context.instance_eval {require file}
-      rescue => e
-        warn "Enabling #{plugin} failed", :error => e
-        activation << [plugin, e]
-      rescue LoadError => e
-        warn "Enabling #{plugin} failed", :error => e
-        activation << [plugin, :gray]
+      plugin_config[:extender] = config
+      plugin_config[:active] = true
+      with_plugin_config(plugin_config) do
+        file = plugin_file(plugin)
+        begin
+          @context.instance_eval {
+            require file
+          }
+          @context.instance_eval(&block) if block
+        rescue => e
+          warn "Enabling #{plugin} failed", :error => e
+          activation << [plugin, e]
+          config[:active] = false
+        rescue LoadError => e
+          warn "Enabling #{plugin} failed", :error => e
+          activation << [plugin, :gray]
+          config[:active] = false
+        end
       end
     end
 
-    def self.extender
-      self
+    def self.helper
+      @helper ||= Module.new
+    end
+
+    def self.load_helper
+      Dir["#{plugin_file("helper")}/*.rb"].each do |file|
+        helper.instance_eval {
+          # Sorry - does not switch context as intended
+          require file
+        }
+      end
     end
 
     def self.inline_notify(options = {}, &block)
@@ -145,36 +179,70 @@ module IRB
           memory = injected
 
           class_eval do
-            define_method(:extender) do
+            define_method(:irb_extender) do
               memory
-            end
-
-            define_method(:irb_plugin) do |*args|
-              extender.plugin(*args)
-            end
-
-            define_method(:irb_activate) do |*args|
-              extender.activate(*args)
             end
           end
 
           enhanced.__send__(:extend, self)
         end
 
+        def irb_plugin(*args, &block)
+          irb_extender.plugin(*args, &block)
+        end
+
+        def irb_activate(*args, &block)
+          irb_extender.activate(*args, &block)
+        end
+
+        def irb_helper
+          irb_extender.helper
+        end
+
+        def irb_config
+          irb_extender.plugin_config
+        end
+
         self
       end.inject(context, self)
     end
 
-
-    def self.run(context)
-      @context = context
-      inject_into(context)
-      yield self if block_given?
-      print_summary unless config[:quiet]
+    def self.tasks
+      @tasks ||= []
     end
 
-    def self.context
-      @context
+    module Collector
+      def self.activate(*args, &block)
+        IRB::Extender.tasks << [:activate, block, *args]
+      end
+
+      def self.plugin(name, options = {})
+        plugin_config = options[:config] || {}
+        IRB::Extender.config[:extensions][name.to_sym] = plugin_config
+        IRB::Extender.tasks << [:plugin, nil, name, options]
+      end
+
+      def self.config
+        IRB::Extender.config
+      end
+    end
+
+    def self.run(context, &block)
+      @context = context
+      inject_into(context)
+      if block
+        Collector.instance_eval(&block)
+        load_helper
+        tasks.each do |action, block, *args|
+          if block
+            __send__(action, *args, &block)
+          else
+            __send__(action, *args)
+          end
+        end
+      end
+      print_summary unless config[:quiet]
+      instance_variables.each {|var| instance_variable_set(var, nil)}
     end
 
     def self.config
@@ -183,11 +251,8 @@ module IRB
         :backtrace => false,
         :quiet => false,
         :plugins => File.expand_path("~/.irb/plugins"),
+        :extensions => {},
       }
-    end
-
-    def self.configure
-      yield config
     end
   end
 end
