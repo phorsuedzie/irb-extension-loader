@@ -16,6 +16,8 @@ module IrbExtender
       return if options[:not_if]
       description = options[:description] || specification || "<not specified>"
       required = specification
+      activation_state = [description, :unknown]
+      activation << activation_state
       if options[:local] && required
         required = library_file(required)
         File.exists?(required + ".rb") or state = :skip
@@ -36,7 +38,7 @@ module IrbExtender
           state = :gray
         end
       end
-      activation << [description, state]
+      activation_state.pop; activation_state << state
     end
 
     def self.activation
