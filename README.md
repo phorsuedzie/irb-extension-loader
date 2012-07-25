@@ -84,10 +84,14 @@ irb environments (as e.g. being run from different applications).
 A plugin is a ruby file, specified with `plugin`, relative to
 your current plugins directory. It
 
-- runs in irb's current context
-- can activate libraries or self-made code
-- can customize the libraries loaded
-- has access to the irb extension loader
+- runs in irb's main context
+- can activate (see `activate` above)
+  - libraries (`irb activate <path to require>`)
+  - or self-made code (`irb_activate <path>, :local => true`)
+- can customize the libraries loaded (`irb_activate ... do ... end`)
+- has access to it's config via `irb_config`
+- has access to the common helper methods via `irb_helper`
+- can even register more plugins via `irb_plugin`
 
 A plugin is a few lines of code as follows:
 
@@ -96,25 +100,33 @@ A plugin is a few lines of code as follows:
       Wirble.colorize if (config[:wirble][:color] rescue false)
     end
 
-It can even contain an irb extension code. You should extract the extension
-code into a separate file if it contains conditional expressions about the
-current environment:
+A useful pattern is to load an abstract application extender plugin which
+delegates to the appliation specific plugin based on e.g.
+`File.basename(Dir.pwd)` or a different application discriminator.
+
+It can even contain the definition of a helpful method.
+
+If your code contains several independent pathes, you can separated
+your concerns in different files:
 
     if defined?(Rails)
-      irb_activate 'my_helper/rails3', :local => true
+      irb_activate 'rails/rails3', :local => true
     elsif ENV.key?('RAILS_ENV')
-      irb_activate 'my_helper/rails', :local => true
+      irb_activate 'rails/legacy_rails', :local => true
     end
-
-The `irb_activate` method is the same as the `loader.activate` call.
-It requires the specified file and runs the optional code block.
 
 The `irb_config` method (see the wirble example) provides access to
 your plugin config:
 
+    # .irbrc
     IRB::Extender.run(self) do |config|
       plugin 'wirble', :config => {:color => true}
     end
+
+    # plugins/wirble.rb
+
+    irb_config[:color]
+    # => true
 
 With `irb_plugin` you can even add another (sub-)plugin from within a
 plugin, e.g. depending on your enviroment.
@@ -133,6 +145,4 @@ They are ruby code defining methods the following way:
     end
 
 They are designed to provide helper methods commonly used in plugins.
-See example/plugins/helper/rails.rb for a simple incarnation.
-
-
+See `example/plugins/helper/rails.rb` for a simple incarnation.
