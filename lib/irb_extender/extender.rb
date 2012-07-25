@@ -1,7 +1,69 @@
 require 'irb_extender'
 
 module IrbExtender
+  module Notifications
+
+    class << self
+
+      attr_reader :config
+
+      def configure(config)
+        @config = {:quiet => config[:quiet], :color => config[:color]}
+      end
+
+      def inline_notify(options)
+        current, @inline = @inline, true
+        yield
+      ensure
+        puts "" if options[:block]
+        @inline = current
+      end
+
+      def write(text, options = nil)
+        config[:quiet] and return
+        options ||= {}
+        text = text.gsub(/^/, "[#{options[:section]}] ") if options[:section]
+        if options[:color] && config[:color]
+          color = ANSI.const_get(options[:color].to_s.upcase)
+          text = "#{color}#{text}#{ANSI::RESET}"
+        end
+        if @inline
+          print text
+        else
+          puts text
+        end
+      end
+
+    end
+
+    def inline_notify(options = {}, &block)
+      Notifications.inline_notify(options, &block)
+    end
+
+    def notify(text, options = nil)
+      o = {:color => :gray}
+      o = o.merge(options) if options
+      write(text, o)
+    end
+
+    def warn(failure, options = nil)
+      if e = options[:error]
+        failure += ": #{e.message}"
+        failure << "\n  #{e.backtrace.join("\n  ")}" if config[:backtrace]
+      end
+      o = {:color => :red}
+      o = o.merge(options) if options
+      write(failure, o)
+    end
+
+    def write(text, options = nil)
+      Notifications.write(text, options)
+    end
+
+  end
+
   module Extender
+    extend Notifications
     #
     # activate 'rubygems'
     # activate 'wirble' { Wirble.init }
@@ -62,7 +124,7 @@ module IrbExtender
     end
 
     def self.plugin_config_stack
-      @plugin_config_stack ||= []
+      @plugin_config_stack ||= [{}]
     end
 
     def self.plugin_config
@@ -115,40 +177,6 @@ module IrbExtender
           # Sorry - does not switch context as intended
           require file
         }
-      end
-    end
-
-    def self.inline_notify(options = {}, &block)
-      current, @inline = @inline, true
-      yield
-    ensure
-      puts "" if options[:block]
-      @inline = current
-    end
-
-    def self.notify(text, options = {})
-      write(text, {:color => :gray}.merge(options))
-    end
-
-    def self.warn(failure, options = {})
-      if e = options[:error]
-        failure += ": #{e.message}"
-        failure << "\n  #{e.backtrace.join("\n  ")}" if config[:backtrace]
-      end
-      write(failure, {:color => :red}.merge(options))
-    end
-
-    def self.write(text, options = {})
-      return if config[:quiet]
-      text = text.gsub(/^/, "[#{options[:section]}] ") if options[:section]
-      if options[:color] && config[:color]
-        color = ANSI.const_get(options[:color].to_s.upcase)
-        text = "#{color}#{text}#{ANSI::RESET}"
-      end
-      if @inline
-        print text
-      else
-        puts text
       end
     end
 
@@ -223,6 +251,7 @@ module IrbExtender
       inject_into(context)
       if block
         Collector.instance_eval(&block)
+        Notifications.configure(config)
         load_helper
         tasks.each do |action, block, *args|
           if block
