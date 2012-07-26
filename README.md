@@ -1,18 +1,20 @@
 WORK IN PROGRESS (working but APIs might change)
 
-IRB Extension Loader
-====================
+Failsafe Loading (for IRB and beyond)
+=====================================
 
 Unfortunately, errors are not shown when loading `.irbrc`.
 
-The `IRB::Extender` keeps this "ignore errors" behaviour. But if an extension
-fails to load, it will be reported, and it will continue to load the next
-extension and not stop as vanilla irb does.
+`FailsafeLoading` keeps this "ignore errors" behaviour. But if an extension
+fails to load, the failure is reported. And loading continues with the next
+extension (other than vanilla irb, which silently stops).
 
 The following kinds of extension loading are supported:
-  - activation: simple loading for libraries not needing configuration
-    (e.g. rubygems)
-  - plugin: advanced loading with configuration or defered library selection
+  - library: to require a ruby file provided by the system (rubygems, pry, ...)
+  - plugin : to require a ruby file from the plugin directory. A simple plugin
+    loads a library and configures it. Helpers can be written to support
+    a group of plugins to make their decisions (e.g. by examining the IRB
+    context, e.g. if this is a Rails console run).
 
 
 Installation
@@ -21,7 +23,7 @@ Installation
 Check out this repository as `~/.irb/extender` (the name is not important). You
 can immediately play around with it as follows:
 
-  - start (vanilla) irb
+  - start (vanilla) `irb -f`
   - `load 'example/irbrc'`
 
 To activate it for every irb session, create your own `~/.irbrc` based on
@@ -41,7 +43,7 @@ to require and need no further initialization, in which case they can just
 be required. The irb extension loader just catches all errors which occur
 when loading the library:
 
-    activate 'rubygems'
+    library 'rubygems'
 
 The loader will report whether the `require` failed (or an error occured).
 
@@ -50,27 +52,33 @@ necessary initialization and/or provides the functionality depending on your
 irb environment (e.g. the rails application for which `rails console` was
 started).
 
-    plugin 'wirble'          # additionaly initialized Wirble
+    plugin 'wirble'          # additionaly initializes Wirble
     plugin 'my_web_service'  # which may read authentication credentials
                              # from a file and configure the base resource
 
-See next section for details on how to write a plugin.
+A plugin may be provided severaly options:
+   :only_if, :not_if         # if the plugin should (not) be activated in
+                             # certain environments - takes a boolean value
+                             # or a lambda
+   :config                   # will be returned to the plugin when it calls
+                             # `config`
 
-Both extensions and plugins can be restricted to (not) being loaded, depending
-on a boolean value for the options `:only_if` and `:not_if`.
+See the next section for details on how to write a plugin.
 
-    activate 'rake', :only_if => File.directory?(Dir.pwd + "/tasks")
+Examples:
 
-An extension can be declared as being 'local'. It will then be required
-from the plugins' subdirectory `lib`.
+    library 'rake', :only_if => File.directory?(Dir.pwd + "/tasks")
+    plugin_library 'wirble', :config => {:colorize => true}
+    plugin  'stdout_rails_log', :only_if => lambda {|helper| helper.rails?}
 
-Example:
 
-    activate 'funny_lib', :local => true
+Here,
+
+    plugin_library 'wirble'
 
 will load (require)
 
-    ~/.irb/plugins/lib/funny_lib.rb
+    ~/.irb/plugins/lib/wirble.rb
 
 (the plugins directory being `~/.irb/plugins`)
 
@@ -85,19 +93,17 @@ A plugin is a ruby file, specified with `plugin`, relative to
 your current plugins directory. It
 
 - runs in irb's main context
-- can activate (see `activate` above)
-  - libraries (`irb activate <path to require>`)
-  - or self-made code (`irb_activate <path>, :local => true`)
-- can customize the libraries loaded (`irb_activate ... do ... end`)
-- has access to it's config via `irb_config`
-- has access to the common helper methods via `irb_helper`
-- can even register more plugins via `irb_plugin`
+- can require additional
+  - libraries (`library <path to require>`)
+  - plugin (libraries) (`plugin <path>`)
+- can customize the libraries loaded (`library 'file' do ... end`)
+- has access to it's config via `config`
 
 A plugin is a few lines of code as follows:
 
-    irb_activate 'wirble' do
+    library 'wirble' do
       Wirble.init
-      Wirble.colorize if (config[:wirble][:color] rescue false)
+      Wirble.colorize if (config[:colorize] rescue false)
     end
 
 A useful pattern is to load an abstract application extender plugin which
@@ -106,42 +112,37 @@ delegates to the appliation specific plugin based on e.g.
 
 It can even contain the definition of a helpful method.
 
-If your code contains several independent pathes, you can separated
+If your code contains several independent pathes, you can separate
 your concerns in different files:
 
     if defined?(Rails)
-      irb_activate 'rails/rails3', :local => true
+      plugin_library 'rails/rails3'
     elsif ENV.key?('RAILS_ENV')
-      irb_activate 'rails/legacy_rails', :local => true
+      plugin_library 'rails/legacy_rails'
     end
 
-The `irb_config` method (see the wirble example) provides access to
+The `config` method (see the wirble example) provides access to
 your plugin config:
 
     # .irbrc
-    IRB::Extender.run(self) do |config|
-      plugin 'wirble', :config => {:color => true}
+    FailsafeLoading.run(self) do
+      plugin 'wirble', :config => {:colorize => true}
     end
 
     # plugins/wirble.rb
 
-    irb_config[:color]
+    config[:colorize]
     # => true
 
-With `irb_plugin` you can even add another (sub-)plugin from within a
-plugin, e.g. depending on your enviroment.
 
+Plugin Helpers
+==============
 
-Plugin Helper
-=============
-
-Plugin helper are loaded before any extension loading is performed.
+Plugin helpers are loaded before any extension loading is performed.
 They are ruby code defining methods the following way:
 
-    irb_helper.instance_eval do
-      def a_helper_method
-        # provide some sophisticated help
-      end
+    def a_helper_method
+      # provide some sophisticated help
     end
 
 They are designed to provide helper methods commonly used in plugins.

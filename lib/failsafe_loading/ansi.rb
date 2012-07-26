@@ -1,6 +1,6 @@
-require 'irb_extender'
+require 'failsafe_loading'
 
-module IrbExtender
+module FailsafeLoading
 
   module ANSI
     RESET     = "\e[0m"
@@ -14,6 +14,7 @@ module IrbExtender
     WHITE     = "\e[37m"
 
     SKIP      = GRAY
+    LOAD_ERROR= GRAY
   end
 
 end

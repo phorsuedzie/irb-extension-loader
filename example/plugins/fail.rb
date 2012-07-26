@@ -1,1 +1,1 @@
-raise "Failure while executing loader"
+raise "Failure while executing plugin code"

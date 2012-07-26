@@ -1,1 +1,1 @@
-require File.expand_path("../lib/irb_extender", __FILE__)
+require File.expand_path("../lib/failsafe_loading", __FILE__)
